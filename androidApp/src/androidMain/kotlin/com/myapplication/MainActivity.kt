@@ -1,5 +1,4 @@
 package com.myapplication
-package com.myapplication
 
 import android.content.Context
 import android.content.Intent
