@@ -15,10 +15,22 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -30,8 +42,24 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,7 +76,6 @@ import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.delay
 import java.util.UUID
 
-// Цветовая палитра Nothing OS Light
 private val BgPureWhite = Color(0xFFFFFFFF)
 private val SurfaceCard = Color(0xFFF5F5F7)
 private val SurfaceElevated = Color(0xFFEBEBEF)
@@ -79,7 +106,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            val lightColorScheme = lightColorScheme(
+            val scheme = lightColorScheme(
                 primary = NothingRed,
                 onPrimary = Color.White,
                 background = BgPureWhite,
@@ -90,12 +117,8 @@ class MainActivity : ComponentActivity() {
                 onSurfaceVariant = TextSecondary,
                 outline = BorderSubtle
             )
-
-            MaterialTheme(colorScheme = lightColorScheme) {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = BgPureWhite
-                ) {
+            MaterialTheme(colorScheme = scheme) {
+                Surface(modifier = Modifier.fillMaxSize(), color = BgPureWhite) {
                     NothingWorkoutApp()
                 }
             }
@@ -110,40 +133,42 @@ fun NothingWorkoutApp() {
     val gson = remember { Gson() }
     val prefs = remember { context.getSharedPreferences("nothing_workout_v2", Context.MODE_PRIVATE) }
 
-    var workoutDays by remember {
-        mutableStateOf(loadWorkouts(prefs, gson))
-    }
-    var selectedDayIndex by remember { mutableIntStateOf(0) }
+    val workoutDaysState = remember { mutableStateOf(loadWorkouts(prefs, gson)) }
+    val selectedDayIndexState = remember { mutableStateOf(0) }
 
-    // Таймер отдыха
-    var restRemaining by remember { mutableIntStateOf(0) }
-    var restTotal by remember { mutableIntStateOf(90) }
-    var isTimerRunning by remember { mutableStateOf(false) }
+    val restRemainingState = remember { mutableStateOf(0) }
+    val restTotalState = remember { mutableStateOf(90) }
+    val isTimerRunningState = remember { mutableStateOf(false) }
 
-    // Модальное окно редактирования / создания упражнения
-    var editingExercise by remember { mutableStateOf<ExerciseItem?>(null) }
-    var isCreatingNew by remember { mutableStateOf(false) }
+    val editingExerciseState = remember { mutableStateOf<ExerciseItem?>(null) }
+    val isCreatingNewState = remember { mutableStateOf(false) }
+
+    val workoutDays = workoutDaysState.value
+    val selectedDayIndex = selectedDayIndexState.value
+    val restRemaining = restRemainingState.value
+    val restTotal = restTotalState.value
+    val isTimerRunning = isTimerRunningState.value
 
     fun saveWorkouts(updated: List<WorkoutDay>) {
-        workoutDays = updated
+        workoutDaysState.value = updated
         prefs.edit().putString("workouts_json", gson.toJson(updated)).apply()
     }
 
-    // Обратный отсчёт таймера
     LaunchedEffect(isTimerRunning, restRemaining) {
         if (isTimerRunning && restRemaining > 0) {
             delay(1000L)
-            restRemaining -= 1
-            if (restRemaining == 0) {
-                isTimerRunning = false
+            val next = restRemaining - 1
+            restRemainingState.value = next
+            if (next == 0) {
+                isTimerRunningState.value = false
                 triggerFeedback(context)
             }
         }
     }
 
     val currentDay = workoutDays.getOrElse(selectedDayIndex) { workoutDays.first() }
-    val totalSets = currentDay.exercises.sumOf { it.sets }
-    val doneSets = currentDay.exercises.sumOf { it.completedSets }
+    val totalSets = currentDay.exercises.sumOf { ex -> ex.sets }
+    val doneSets = currentDay.exercises.sumOf { ex -> ex.completedSets }
     val progressRatio = if (totalSets > 0) doneSets.toFloat() / totalSets else 0f
 
     Scaffold(
@@ -178,17 +203,18 @@ fun NothingWorkoutApp() {
                         )
                     }
 
-                    // Сброс прогресса дня
                     OutlinedButton(
                         onClick = {
                             val resetList = workoutDays.mapIndexed { idx, day ->
                                 if (idx == selectedDayIndex) {
-                                    day.copy(exercises = day.exercises.map { it.copy(completedSets = 0) })
-                                } else day
+                                    day.copy(exercises = day.exercises.map { ex -> ex.copy(completedSets = 0) })
+                                } else {
+                                    day
+                                }
                             }
                             saveWorkouts(resetList)
-                            isTimerRunning = false
-                            restRemaining = 0
+                            isTimerRunningState.value = false
+                            restRemainingState.value = 0
                         },
                         shape = RoundedCornerShape(50),
                         border = BorderStroke(1.dp, BorderSubtle),
@@ -213,10 +239,7 @@ fun NothingWorkoutApp() {
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Выбор тренировочного дня
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(workoutDays.size) { index ->
                         val day = workoutDays[index]
                         val selected = index == selectedDayIndex
@@ -229,7 +252,7 @@ fun NothingWorkoutApp() {
                                     color = if (selected) TextPrimary else BorderSubtle,
                                     shape = RoundedCornerShape(50)
                                 )
-                                .clickable { selectedDayIndex = index }
+                                .clickable { selectedDayIndexState.value = index }
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
                             Text(
@@ -247,8 +270,8 @@ fun NothingWorkoutApp() {
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
-                    isCreatingNew = true
-                    editingExercise = ExerciseItem(
+                    isCreatingNewState.value = true
+                    editingExerciseState.value = ExerciseItem(
                         name = "",
                         sets = 3,
                         reps = 10,
@@ -272,7 +295,6 @@ fun NothingWorkoutApp() {
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(bottom = 96.dp)
         ) {
-            // Виджет прогресса и таймера отдыха
             item {
                 Surface(
                     shape = RoundedCornerShape(24.dp),
@@ -304,7 +326,6 @@ fun NothingWorkoutApp() {
                                 )
                             }
 
-                            // Блок таймера
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
@@ -317,10 +338,12 @@ fun NothingWorkoutApp() {
                                     )
                                     .clickable {
                                         if (isTimerRunning) {
-                                            isTimerRunning = false
+                                            isTimerRunningState.value = false
                                         } else {
-                                            if (restRemaining == 0) restRemaining = restTotal
-                                            isTimerRunning = true
+                                            if (restRemaining == 0) {
+                                                restRemainingState.value = restTotal
+                                            }
+                                            isTimerRunningState.value = true
                                         }
                                     }
                                     .padding(horizontal = 14.dp, vertical = 10.dp)
@@ -347,7 +370,6 @@ fun NothingWorkoutApp() {
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        // Точечный индикатор прогресса в стиле Nothing
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -360,18 +382,15 @@ fun NothingWorkoutApp() {
                                         .weight(1f)
                                         .height(6.dp)
                                         .clip(CircleShape)
-                                        .background(
-                                            if (i < activeDots) NothingRed else BorderSubtle
-                                        )
+                                        .background(if (i < activeDots) NothingRed else BorderSubtle)
                                 )
                             }
                         }
                     }
                 }
             }
-
-            // Список упражнений
-            items(currentDay.exercises, key = { it.id }) { exercise ->
+                        items(currentDay.exercises.size) { index ->
+                val exercise = currentDay.exercises[index]
                 ExerciseCard(
                     exercise = exercise,
                     onToggleSet = { setIndex ->
@@ -383,59 +402,67 @@ fun NothingWorkoutApp() {
                         val updated = workoutDays.mapIndexed { idx, day ->
                             if (idx == selectedDayIndex) {
                                 day.copy(
-                                    exercises = day.exercises.map {
-                                        if (it.id == exercise.id) it.copy(completedSets = newCompleted) else it
+                                    exercises = day.exercises.map { ex ->
+                                        if (ex.id == exercise.id) ex.copy(completedSets = newCompleted) else ex
                                     }
                                 )
-                            } else day
+                            } else {
+                                day
+                            }
                         }
                         saveWorkouts(updated)
                         if (newCompleted > exercise.completedSets) {
-                            restTotal = exercise.restSeconds
-                            restRemaining = exercise.restSeconds
-                            isTimerRunning = true
+                            restTotalState.value = exercise.restSeconds
+                            restRemainingState.value = exercise.restSeconds
+                            isTimerRunningState.value = true
                         }
                     },
                     onEditClick = {
-                        isCreatingNew = false
-                        editingExercise = exercise
+                        isCreatingNewState.value = false
+                        editingExerciseState.value = exercise
                     }
                 )
             }
         }
     }
 
-    // Диалог настройки упражнения
-    editingExercise?.let { target ->
+    val targetExercise = editingExerciseState.value
+    if (targetExercise != null) {
         ExerciseEditorSheet(
-            exercise = target,
-            isNew = isCreatingNew,
-            onDismiss = { editingExercise = null },
+            exercise = targetExercise,
+            isNew = isCreatingNewState.value,
+            onDismiss = { editingExerciseState.value = null },
             onSave = { savedItem ->
                 val updated = workoutDays.mapIndexed { idx, day ->
                     if (idx == selectedDayIndex) {
-                        val newList = if (isCreatingNew) {
+                        val newList = if (isCreatingNewState.value) {
                             day.exercises + savedItem
                         } else {
-                            day.exercises.map { if (it.id == savedItem.id) savedItem else it }
+                            day.exercises.map { ex -> if (ex.id == savedItem.id) savedItem else ex }
                         }
                         day.copy(exercises = newList)
-                    } else day
+                    } else {
+                        day
+                    }
                 }
                 saveWorkouts(updated)
-                editingExercise = null
+                editingExerciseState.value = null
             },
-            onDelete = if (!isCreatingNew) {
+            onDelete = if (!isCreatingNewState.value) {
                 {
                     val updated = workoutDays.mapIndexed { idx, day ->
                         if (idx == selectedDayIndex) {
-                            day.copy(exercises = day.exercises.filterNot { it.id == target.id })
-                        } else day
+                            day.copy(exercises = day.exercises.filterNot { ex -> ex.id == targetExercise.id })
+                        } else {
+                            day
+                        }
                     }
                     saveWorkouts(updated)
-                    editingExercise = null
+                    editingExerciseState.value = null
                 }
-            } else null
+            } else {
+                null
+            }
         )
     }
 }
@@ -473,4 +500,202 @@ private fun ExerciseCard(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     val weightLabel = if (exercise.weight % 1f == 0f) {
-       
+                        "${exercise.weight.toInt()} кг"
+                    } else {
+                        "${exercise.weight} кг"
+                    }
+                    Text(
+                        text = "${exercise.sets}x${exercise.reps}  •  $weightLabel  •  ОТДЫХ ${exercise.restSeconds}С",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        color = TextSecondary
+                    )
+                }
+
+                IconButton(
+                    onClick = onEditClick,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "Настроить",
+                        tint = TextSecondary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                for (i in 0 until exercise.sets) {
+                    val done = i < exercise.completedSets
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(if (done) NothingRed else BgPureWhite)
+                            .border(
+                                width = 1.dp,
+                                color = if (done) NothingRed else BorderSubtle,
+                                shape = CircleShape
+                            )
+                            .clickable { onToggleSet(i) }
+                    ) {
+                        if (done) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        } else {
+                            Text(
+                                text = "${i + 1}",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = TextPrimary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExerciseEditorSheet(
+    exercise: ExerciseItem,
+    isNew: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (ExerciseItem) -> Unit,
+    onDelete: (() -> Unit)?
+) {
+    val nameState = remember { mutableStateOf(exercise.name) }
+    val setsState = remember { mutableStateOf(exercise.sets) }
+    val repsState = remember { mutableStateOf(exercise.reps) }
+    val weightTextState = remember {
+        mutableStateOf(
+            if (exercise.weight % 1f == 0f) exercise.weight.toInt().toString()
+            else exercise.weight.toString()
+        )
+    }
+    val restSecondsState = remember { mutableStateOf(exercise.restSeconds) }
+
+    val name = nameState.value
+    val sets = setsState.value
+    val reps = repsState.value
+    val weightText = weightTextState.value
+    val restSeconds = restSecondsState.value
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = BgPureWhite,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (isNew) "НОВОЕ УПРАЖНЕНИЕ" else "НАСТРОЙКА УПРАЖНЕНИЯ",
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    letterSpacing = 1.sp,
+                    color = TextPrimary
+                )
+                if (onDelete != null) {
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Удалить",
+                            tint = NothingRed
+                        )
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                value = name,
+                onValueChange = { newVal -> nameState.value = newVal },
+                label = { Text("Название упражнения") },
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                CounterBox(
+                    title = "ПОДХОДЫ",
+                    value = sets,
+                    onMinus = { if (sets > 1) setsState.value = sets - 1 },
+                    onPlus = { if (sets < 12) setsState.value = sets + 1 },
+                    modifier = Modifier.weight(1f)
+                )
+                CounterBox(
+                    title = "ПОВТОРЫ",
+                    value = reps,
+                    onMinus = { if (reps > 1) repsState.value = reps - 1 },
+                    onPlus = { if (reps < 100) repsState.value = reps + 1 },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = SurfaceCard,
+                border = BorderStroke(1.dp, BorderSubtle),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "ВЕС (КГ)",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SmallStepButton(label = "-2.5") {
+                            val current = weightText.replace(',', '.').toFloatOrNull() ?: 0f
+                            val next = (current - 2.5f).coerceAtLeast(0f)
+                            weightTextState.value = if (next % 1f == 0f) next.toInt().toString() else next.toString()
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        OutlinedTextField(
+                            value = weightText,
+                            onValueChange = { newVal -> weightTextState.value = newVal },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.width(84.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        SmallStepButton(label = "+2.5") {
+                            val current = weightText.replace(',', '.').toFloatOrNull() ?: 0f
+                            val next = current + 2.5f
+                            weightTextState.value = if (next % 1f == 0f) next.toInt().toString() else next.
+                            
