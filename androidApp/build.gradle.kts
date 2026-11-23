@@ -8,7 +8,7 @@ kotlin {
     androidTarget()
     sourceSets {
         val androidMain by getting {
-            dependencies {
+            dependencies {implementation("com.google.code.gson:gson:2.11.0")
                 implementation(project(":shared"))
             }
         }
